@@ -1,0 +1,353 @@
+# -*- coding: utf-8 -*-
+"""
+CHEF COMPENSWISS Web Scraper
+Navigates to the live site and extracts investment data
+"""
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+import pandas as pd
+import re
+import time
+import datetime
+import os
+import shutil
+import zipfile
+import config
+
+
+class CompensswissScraper:
+    """Main scraper for CHEF COMPENSWISS data extraction"""
+
+    def __init__(self, headless=None, year=None):
+        self.driver = None
+        # Use config settings if not specified
+        self.headless = headless if headless is not None else config.HEADLESS
+        self.year = year if year else config.YEAR
+        self.performance_data = {}
+        self.strategic_data = {}
+        self.csv_row = ["NA"] * 33
+
+    def setup_driver(self):
+        """Setup Chrome WebDriver"""
+        print("\n[1] Setting up Chrome driver...")
+        chrome_options = Options()
+        if self.headless:
+            chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--window-size=1920,1080")
+
+        self.driver = webdriver.Chrome(options=chrome_options)
+        self.driver.set_page_load_timeout(config.SELENIUM_PAGE_LOAD_TIMEOUT)
+        print("[OK] Chrome driver ready")
+
+    def scrape_performance_page(self):
+        """Navigate to performance page and extract table data"""
+        print("\n[2] Scraping performance page...")
+        print("    URL: {}".format(config.PERFORMANCE_PAGE))
+
+        # Navigate
+        self.driver.get(config.PERFORMANCE_PAGE)
+
+        # Wait for table to load
+        wait = WebDriverWait(self.driver, config.SELENIUM_WAIT_TIME)
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "table--chart")))
+        print("[OK] Page loaded")
+
+        # Get page source and parse
+        html = self.driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # Find the performance table
+        table = soup.find('table', class_='table--chart')
+        if not table:
+            raise Exception("Performance table not found")
+
+        tbody = table.find('tbody')
+        rows = tbody.find_all('tr')
+        print("[OK] Found {} rows in table".format(len(rows)))
+
+        # Extract data from each row
+        for row in rows:
+            cells = row.find_all('td')
+            if len(cells) < 2:
+                continue
+
+            # Get category name - remove superscript tags first
+            category_cell_clean = cells[0]
+            for sup in category_cell_clean.find_all('sup'):
+                sup.decompose()  # Remove superscript tags
+            category = category_cell_clean.get_text(strip=True)
+            if not category:
+                continue
+
+            # Get amount (2nd column)
+            amount_text = cells[1].get_text(strip=True)
+            if not amount_text:
+                continue
+
+            # Clean amount
+            amount = amount_text.replace('\xa0', '').replace(' ', '').replace(',', '')
+
+            # Store
+            self.performance_data[category] = amount
+            print("    {} = {}".format(category[:40], amount))
+
+        print("[OK] Extracted {} performance data points".format(len(self.performance_data)))
+
+        # Map to CSV columns
+        self.map_performance_to_csv()
+
+    def map_performance_to_csv(self):
+        """Map performance data to CSV columns using config mapping"""
+        print("\n[3] Mapping performance data to CSV columns...")
+
+        for category, col_index in config.PERFORMANCE_TABLE_MAPPING.items():
+            if category in self.performance_data:
+                self.csv_row[col_index] = self.performance_data[category]
+                print("    Col[{}] = {}".format(col_index, self.performance_data[category]))
+            else:
+                print("    Col[{}] = NOT FOUND (kept as NA)".format(col_index))
+
+        print("[OK] Performance data mapped")
+
+    def scrape_strategic_allocation_page(self):
+        """Navigate to strategic allocation page and extract percentages"""
+        print("\n[4] Scraping strategic allocation page...")
+        print("    URL: {}".format(config.STRATEGIC_ALLOCATION_PAGE))
+
+        # Navigate
+        self.driver.get(config.STRATEGIC_ALLOCATION_PAGE)
+
+        # Wait for section to load
+        wait = WebDriverWait(self.driver, config.SELENIUM_WAIT_TIME)
+        wait.until(EC.presence_of_element_located((By.XPATH, "//h3[contains(text(), 'Structure of the strategic allocation')]")))
+        print("[OK] Page loaded")
+
+        # Get page source and parse
+        html = self.driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # Find the section
+        heading = soup.find('h3', string=re.compile(r'Structure of the strategic allocation', re.IGNORECASE))
+        if not heading:
+            # Try finding by ID
+            anchor = soup.find('a', id='a4')
+            if anchor:
+                heading = anchor.find_parent('h3')
+
+        if not heading:
+            raise Exception("Strategic allocation section not found")
+
+        # Get paragraphs after heading
+        paragraphs = []
+        current = heading.find_next_sibling()
+
+        while current:
+            if current.name == 'p':
+                text = current.get_text(strip=True)
+                if text:
+                    paragraphs.append(text)
+            elif current.name in ['h2', 'h3', 'h4']:
+                break
+            current = current.find_next_sibling()
+
+        full_text = " ".join(paragraphs)
+        print("[OK] Extracted text ({} characters)".format(len(full_text)))
+
+        # Extract percentages using regex
+        self.extract_strategic_percentages(full_text)
+
+    def extract_strategic_percentages(self, text):
+        """Extract percentage values from text using regex"""
+        print("\n[5] Extracting strategic allocation percentages...")
+
+        patterns = {
+            "Foreign currency bonds": (r"Foreign currency bonds account for (\d+)%", 28),
+            "Equities": (r"Equities account for (\d+)%", 29),
+            "Bonds in CHF": (r"denominated in CHF account for (\d+)%", 30),
+            "Real estate": (r"Real estate.*?accounts for (\d+)%", 31),
+            "Precious metals": (r"invests (\d+)% in precious metals", 32),
+        }
+
+        for key, (pattern, col_index) in patterns.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                percentage = match.group(1)
+                self.csv_row[col_index] = percentage
+                print("    {} = {}% -> Col[{}]".format(key, percentage, col_index))
+            else:
+                print("    {} = NOT FOUND (kept as NA)".format(key))
+
+        print("[OK] Strategic allocation extracted")
+
+    def run(self, year=None):
+        """Run complete scraping workflow"""
+        # Use instance year if not provided
+        if year is None:
+            year = self.year
+
+        # Handle "latest" keyword
+        if year == "latest":
+            year = datetime.datetime.now().year
+        else:
+            year = int(year)
+
+        print("\n" + "="*70)
+        print("  CHEF COMPENSWISS DATA SCRAPER - {}".format(year))
+        print("="*70)
+
+        try:
+            # Setup
+            self.setup_driver()
+
+            # Scrape performance page
+            self.scrape_performance_page()
+
+            # Scrape strategic allocation page
+            self.scrape_strategic_allocation_page()
+
+            # Set year
+            self.csv_row[0] = str(year)
+
+            print("\n" + "="*70)
+            print("  SCRAPING COMPLETE")
+            print("="*70)
+
+            return self.csv_row
+
+        finally:
+            self.close()
+
+    def close(self):
+        """Close browser"""
+        if self.driver:
+            self.driver.quit()
+            print("\n[OK] Browser closed")
+
+    def save_to_excel(self, year=None):
+        """Save data to Excel and create ZIP archive per runbook requirements"""
+        if year is None:
+            year = self.csv_row[0] if self.csv_row[0] != "" else datetime.datetime.now().year
+
+        print("\n[6] Saving to Excel...")
+
+        # Create reports directory structure
+        base_dir = r"C:\Users\Mark Castro\Documents\CHEF – COMPENSWISS"
+        reports_dir = os.path.join(base_dir, "reports")
+
+        # Timestamp for file naming (YYYYMMDD format as per runbook)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d")
+        timestamp_dir = os.path.join(reports_dir, timestamp)
+        os.makedirs(timestamp_dir, exist_ok=True)
+
+        # Latest folder
+        latest_dir = os.path.join(reports_dir, "latest")
+        os.makedirs(latest_dir, exist_ok=True)
+
+        # File names per runbook: DATASET_DATA_YYYYMMDD.xls
+        data_filename = "{}_DATA_{}.xls".format(config.DATASET_NAME, timestamp)
+        meta_filename = "{}_META_{}.xls".format(config.DATASET_NAME, timestamp)
+        zip_filename = "{}_{}.zip".format(config.DATASET_NAME, timestamp)
+
+        # Create DataFrame for DATA file
+        df_data = pd.DataFrame([config.CSV_HEADERS, config.CSV_ROW2_HEADERS, self.csv_row])
+
+        # Create DataFrame for METADATA file (placeholder - needs to be customized)
+        df_meta = self.create_metadata()
+
+        # Save to timestamp folder
+        data_path_ts = os.path.join(timestamp_dir, data_filename)
+        meta_path_ts = os.path.join(timestamp_dir, meta_filename)
+        zip_path_ts = os.path.join(timestamp_dir, zip_filename)
+
+        df_data.to_excel(data_path_ts, index=False, header=False, engine='openpyxl')
+        df_meta.to_excel(meta_path_ts, index=False, header=False, engine='openpyxl')
+        print("[OK] Created DATA file: {}".format(data_filename))
+        print("[OK] Created META file: {}".format(meta_filename))
+
+        # Create ZIP archive
+        with zipfile.ZipFile(zip_path_ts, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(data_path_ts, data_filename)
+            zipf.write(meta_path_ts, meta_filename)
+        print("[OK] Created ZIP archive: {}".format(zip_filename))
+
+        # Save to latest folder (overwrite)
+        data_path_latest = os.path.join(latest_dir, data_filename)
+        meta_path_latest = os.path.join(latest_dir, meta_filename)
+        zip_path_latest = os.path.join(latest_dir, zip_filename)
+
+        shutil.copy2(data_path_ts, data_path_latest)
+        shutil.copy2(meta_path_ts, meta_path_latest)
+        shutil.copy2(zip_path_ts, zip_path_latest)
+        print("[OK] Copied to latest folder")
+
+        return zip_path_ts, zip_path_latest
+
+    def create_metadata(self):
+        """Create METADATA file structure"""
+        # Placeholder metadata - should be customized based on actual requirements
+        metadata = {
+            'DATASET': config.DATASET_NAME,
+            'FREQUENCY': 'Annual',
+            'SOURCE': 'Compenswiss - Fonds de compensation AVS',
+            'NEXT_RELEASE_DATE': 'TBD'
+        }
+
+        df = pd.DataFrame([metadata])
+        return df
+
+    def display_summary(self):
+        """Display summary of extracted data"""
+        print("\n" + "="*70)
+        print("  DATA SUMMARY")
+        print("="*70)
+        print("\nYear: {}".format(self.csv_row[0]))
+        print("\n--- Performance Data ---")
+        print("  Money market investments: {}".format(self.csv_row[1]))
+        print("  Swiss francs bonds: {}".format(self.csv_row[3]))
+        print("  Foreign currency bonds: {}".format(self.csv_row[4]))
+        print("  Equities: {}".format(self.csv_row[11]))
+        print("  Real estate: {}".format(self.csv_row[15]))
+        print("  Gold: {}".format(self.csv_row[20]))
+        print("  Market portfolio: {}".format(self.csv_row[22]))
+        print("  Currency hedging: {}".format(self.csv_row[23]))
+        print("  Market portfolio after hedging: {}".format(self.csv_row[26]))
+        print("\n--- Strategic Allocation ---")
+        print("  Foreign currency bonds: {}%".format(self.csv_row[28]))
+        print("  Equities: {}%".format(self.csv_row[29]))
+        print("  Bonds in CHF: {}%".format(self.csv_row[30]))
+        print("  Real estate: {}%".format(self.csv_row[31]))
+        print("  Precious metals: {}%".format(self.csv_row[32]))
+        print("="*70 + "\n")
+
+
+if __name__ == "__main__":
+    import sys
+
+    # Get year from command line, config, or use "latest"
+    if len(sys.argv) > 1:
+        year = sys.argv[1]  # Can be year number or "latest"
+    else:
+        year = config.YEAR
+
+    # Create scraper - uses settings from config
+    scraper = CompensswissScraper()
+
+    # Run scraping
+    scraper.run(year=year)
+
+    # Display summary
+    scraper.display_summary()
+
+    # Save to Excel and create ZIP
+    zip_timestamp, zip_latest = scraper.save_to_excel()
+
+    print("\n[DONE] ZIP archives created:")
+    print("  Timestamp: {}".format(zip_timestamp))
+    print("  Latest: {}".format(zip_latest))

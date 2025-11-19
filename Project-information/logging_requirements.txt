@@ -1,0 +1,229 @@
+## File Structure & Logging Requirements
+
+When generating this script, ensure the following:
+
+1. **Directory Setup**: At the start of the script, create these directories if they don't exist:
+   - downloads/ - for storing all downloaded files (PDFs, Excel, etc.)
+   - logs/ - for storing log files
+
+2. **Logging Configuration**:
+   - Create a log file named with the current timestamp in format: logs/YYYYMMDD_HHMMSS.log
+   - Configure logging to write both to console and to the timestamped log file
+   - Log level should be INFO by default
+   - Include timestamps in each log entry
+
+3. **Example Structure**:
+   project/
+   ├── downloads/
+   ├── logs/
+   └── scraper_script.py
+4. **Python Implementation Pattern**:
+
+import os
+import logging
+from datetime import datetime
+import sys
+import traceback
+
+# ============================================================================
+# DIRECTORY SETUP
+# ============================================================================
+os.makedirs('downloads', exist_ok=True)
+os.makedirs('logs', exist_ok=True)
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'logs/{timestamp}.log'),
+        logging.StreamHandler()
+    ]
+)
+
+# ============================================================================
+# ASSERTION FUNCTIONS
+# ============================================================================
+
+def assert_with_log(condition, message):
+    """Assert with logging - helps track exactly where failure occurred"""
+    if not condition:
+        logging.error(f"ASSERTION FAILED: {message}")
+        raise AssertionError(message)
+    logging.debug(f"Assertion passed: {message}")
+
+def assert_element_exists(element, element_name, context=""):
+    """Assert that a web element was found"""
+    context_msg = f" in {context}" if context else ""
+    if element is None:
+        msg = f"Element '{element_name}' not found{context_msg}"
+        logging.error(f"ASSERTION FAILED: {msg}")
+        raise AssertionError(msg)
+    logging.debug(f"Element '{element_name}' found successfully{context_msg}")
+    return element
+
+def assert_file_exists(filepath, file_description=""):
+    """Assert that a file was created/downloaded"""
+    desc = file_description or filepath
+    if not os.path.exists(filepath):
+        msg = f"File not found: {desc} at {filepath}"
+        logging.error(f"ASSERTION FAILED: {msg}")
+        raise AssertionError(msg)
+    logging.info(f"File verified: {desc}")
+    return filepath
+
+def assert_data_not_empty(data, data_name):
+    """Assert that scraped data is not empty"""
+    if not data or len(data) == 0:
+        msg = f"No data found for: {data_name}"
+        logging.error(f"ASSERTION FAILED: {msg}")
+        raise AssertionError(msg)
+    logging.info(f"Data validated: {data_name} contains {len(data)} items")
+    return data
+
+def assert_dataframe_valid(df, df_name, min_rows=1):
+    """Assert DataFrame has valid data"""
+    assert_with_log(df is not None and not df.empty, f"DataFrame '{df_name}' is not empty")
+    assert_with_log(len(df) >= min_rows, f"DataFrame '{df_name}' has at least {min_rows} rows (actual: {len(df)})")
+    return df
+
+def assert_columns_exist(df, required_columns, df_name):
+    """Assert DataFrame has required columns"""
+    missing = set(required_columns) - set(df.columns)
+    assert_with_log(len(missing) == 0, f"All required columns present in '{df_name}'. Missing: {missing or 'none'}")
+    return df
+
+def assert_driver_initialized(driver):
+    """Assert webdriver is properly initialized"""
+    assert_with_log(driver is not None, "WebDriver initialized")
+    return driver
+
+def assert_url_valid(url):
+    """Assert URL is properly formatted"""
+    assert_with_log(url.startswith(('http://', 'https://')), f"Valid URL format: {url}")
+    return url
+
+def assert_file_downloaded(filepath, min_size_bytes=1000, max_wait_seconds=30):
+    """Assert file downloaded with valid size"""
+    import time
+    waited = 0
+    while waited < max_wait_seconds:
+        if os.path.exists(filepath):
+            size = os.path.getsize(filepath)
+            assert_with_log(size >= min_size_bytes, f"File {filepath} has valid size: {size} bytes")
+            return filepath
+        time.sleep(1)
+        waited += 1
+    raise AssertionError(f"File not downloaded after {max_wait_seconds}s: {filepath}")
+
+# ============================================================================
+# ERROR HANDLING
+# ============================================================================
+
+def save_error_screenshot(driver, error_context=""):
+    """Save screenshot when error occurs"""
+    if driver:
+        screenshot_path = f'logs/error_{timestamp}_{error_context}.png'
+        try:
+            driver.save_screenshot(screenshot_path)
+            logging.error(f"Screenshot saved: {screenshot_path}")
+            return screenshot_path
+        except Exception as e:
+            logging.error(f"Failed to save screenshot: {e}")
+    return None
+
+def save_page_source(driver, error_context=""):
+    """Save HTML source when error occurs"""
+    if driver:
+        html_path = f'logs/error_{timestamp}_{error_context}.html'
+        try:
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(driver.page_source)
+            logging.error(f"Page source saved: {html_path}")
+            return html_path
+        except Exception as e:
+            logging.error(f"Failed to save page source: {e}")
+    return None
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+def main():
+    """Main function with comprehensive error handling"""
+    driver = None
+    
+    try:
+        logging.info("="*60)
+        logging.info(f"STARTING SCRIPT - {timestamp}")
+        logging.info("="*60)
+        
+        # ===== YOUR SCRAPING CODE STARTS HERE =====
+        
+        # Example workflow with assertions:
+        # 1. Initialize browser
+        # from selenium import webdriver
+        # driver = webdriver.Chrome()
+        # assert_driver_initialized(driver)
+        
+        # 2. Navigate to URL
+        # url = "https://example.com"
+        # assert_url_valid(url)
+        # driver.get(url)
+        
+        # 3. Find elements
+        # element = driver.find_element(By.ID, "target")
+        # assert_element_exists(element, "target element")
+        
+        # 4. Extract data
+        # data = []  # Your extraction logic
+        # assert_data_not_empty(data, "extracted data")
+        
+        # 5. Save to file
+        # output_file = f'downloads/output_{timestamp}.csv'
+        # df.to_csv(output_file, index=False)
+        # assert_file_exists(output_file, "Output CSV")
+        
+        # ===== YOUR SCRAPING CODE ENDS HERE =====
+        
+        logging.info("="*60)
+        logging.info("✓ SCRIPT COMPLETED SUCCESSFULLY")
+        logging.info("="*60)
+        return 0
+        
+    except AssertionError as e:
+        logging.error("="*60)
+        logging.error("✗ ASSERTION FAILED")
+        logging.error(f"✗ Error: {str(e)}")
+        logging.error("="*60)
+        save_error_screenshot(driver, "assertion_failure")
+        save_page_source(driver, "assertion_failure")
+        return 1
+        
+    except Exception as e:
+        logging.error("="*60)
+        logging.error("✗ UNEXPECTED ERROR OCCURRED")
+        logging.error(f"✗ Error Type: {type(e).__name__}")
+        logging.error(f"✗ Error Message: {str(e)}")
+        logging.error("="*60)
+        logging.error("Full Traceback:")
+        logging.error(traceback.format_exc())
+        save_error_screenshot(driver, "unexpected_error")
+        save_page_source(driver, "unexpected_error")
+        return 1
+        
+    finally:
+        # Cleanup
+        if driver:
+            try:
+                driver.quit()
+                logging.info("Browser closed successfully")
+            except Exception as e:
+                logging.warning(f"Error closing browser: {e}")
+
+if __name__ == "__main__":
+    exit_code = main()
+    sys.exit(exit_code)

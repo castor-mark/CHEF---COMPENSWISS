@@ -1,0 +1,14 @@
+# CHEF COMPENSWISS Data Scraper - Python Dependencies
+
+# Web scraping
+selenium>=4.15.0
+beautifulsoup4>=4.12.0
+
+# HTML parsing
+lxml>=4.9.0
+
+# Data handling
+pandas>=2.0.0
+
+# Excel export
+openpyxl>=3.1.0
