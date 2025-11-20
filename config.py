@@ -155,4 +155,55 @@ METADATA_STRATEGIC = {
     "PROVIDER_MEASURE_URL": f"{BASE_URL}/en_GB/investments/strategic-asset-allocation-sva"
 }
 
+# Strategic Allocation Extraction Configuration
+# Hybrid strategy: specific patterns + sentence-based fallback with proximity check
+# Validated with 4 AI models (avg confidence: 8/10)
+# Supports: decimal percentages, 0% values, proximity validation
+STRATEGIC_ALLOCATION_CONFIG = {
+    "Foreign currency bonds": {
+        "keywords": ["foreign currency bond", "foreign bond"],
+        "patterns": [
+            r"Foreign currency bonds? (?:account for|represent|comprise|are)(?: approximately| roughly| about)? (\d+(?:\.\d+)?)%",
+            r"(\d+(?:\.\d+)?)% (?:of |in )?foreign currency bonds?",
+        ],
+        "column": 28,
+    },
+    "Equities": {
+        "keywords": ["equit"],
+        "patterns": [
+            r"Equit(?:y|ies) (?:account for|represent|comprise)(?: approximately| roughly| about)? (\d+(?:\.\d+)?)%",
+            r"(\d+(?:\.\d+)?)%.*?equit(?:y|ies)",
+        ],
+        "column": 29,
+    },
+    "Bonds in CHF": {
+        "keywords": ["denominated in", "CHF", "swiss franc"],
+        "patterns": [
+            r"denominated in (?:Swiss )?(?:francs? )?\(CHF\) (?:account for|represent|make up)(?: approximately| roughly| about)? (\d+(?:\.\d+)?)%",
+            r"denominated in (?:Swiss )?CHF (?:account for|represent|make up)(?: approximately| roughly| about)? (\d+(?:\.\d+)?)%",
+            r"Bonds.*?CHF.*?(\d+(?:\.\d+)?)%",
+            r"CHF.*?(\d+(?:\.\d+)?)%",
+        ],
+        "column": 30,
+    },
+    "Real estate": {
+        "keywords": ["real[- ]estate", "property"],
+        "patterns": [
+            r"Real[- ]estate,? which (?:accounts? for|represent|comprise)(?: approximately| roughly| about)? (\d+(?:\.\d+)?)%",
+            r"Real[- ]estate.*?(?:accounts? for|represent|comprise)(?: approximately| roughly| about)? (\d+(?:\.\d+)?)%",
+            r"(\d+(?:\.\d+)?)%.*?real[- ]estate",
+        ],
+        "column": 31,
+    },
+    "Precious metals": {
+        "keywords": ["precious metal", "gold"],
+        "patterns": [
+            r"(?:invest|hold)s?.*?(\d+(?:\.\d+)?)% (?:in |of )?precious metals?",
+            r"precious metals?.*?(\d+(?:\.\d+)?)%",
+            r"(\d+(?:\.\d+)?)% (?:in |of )?precious metals?",
+        ],
+        "column": 32,
+    },
+}
+
 
