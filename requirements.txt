@@ -12,3 +12,7 @@ pandas>=2.0.0
 
 # Excel export
 openpyxl>=3.1.0
+
+# LLM Fallback
+python-dotenv>=1.0.0
+requests>=2.31.0

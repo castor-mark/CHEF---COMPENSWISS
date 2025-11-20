@@ -18,6 +18,7 @@ import os
 import shutil
 import zipfile
 import config
+from llm_fallback import LLMFallbackExtractor
 
 
 class CompensswissScraper:
@@ -31,6 +32,8 @@ class CompensswissScraper:
         self.performance_data = {}
         self.strategic_data = {}
         self.csv_row = ["NA"] * 33
+        # Initialize LLM fallback
+        self.llm_fallback = LLMFallbackExtractor()
 
     def setup_driver(self):
         """Setup Chrome WebDriver"""
@@ -99,6 +102,27 @@ class CompensswissScraper:
             print("    {} = {}".format(category[:40], amount))
 
         print("[OK] Extracted {} performance data points".format(len(self.performance_data)))
+
+        # If extraction failed or incomplete, try LLM fallback
+        expected_count = len(config.PERFORMANCE_TABLE_MAPPING)
+        if len(self.performance_data) < expected_count:
+            missing_count = expected_count - len(self.performance_data)
+            print(f"[WARNING] Missing {missing_count} categories, trying LLM fallback...")
+
+            # Get missing categories
+            missing_categories = [cat for cat in config.PERFORMANCE_TABLE_MAPPING.keys()
+                                  if cat not in self.performance_data]
+
+            # Try LLM extraction
+            llm_data = self.llm_fallback.extract_performance_data(html, missing_categories)
+
+            # Merge LLM results
+            for category, value in llm_data.items():
+                if category not in self.performance_data:
+                    self.performance_data[category] = value
+                    print(f"    [LLM] {category} = {value}")
+
+            print(f"[LLM] Total after fallback: {len(self.performance_data)} categories")
 
         # Map to CSV columns
         self.map_performance_to_csv()
@@ -182,6 +206,9 @@ class CompensswissScraper:
         """
         print("\n[5] Extracting strategic allocation percentages (hybrid strategy)...")
 
+        extracted_count = 0
+        missing_assets = []
+
         for asset_name, asset_config in config.STRATEGIC_ALLOCATION_CONFIG.items():
             value, method = self._extract_hybrid(
                 text,
@@ -194,8 +221,30 @@ class CompensswissScraper:
                 print("    {} = {}% -> Col[{}] ({})".format(
                     asset_name, value, asset_config["column"], method
                 ))
+                extracted_count += 1
             else:
                 print("    {} = NOT FOUND (kept as NA)".format(asset_name))
+                missing_assets.append(asset_name)
+
+        # If some assets not found, try LLM fallback
+        if missing_assets:
+            print(f"\n[WARNING] {len(missing_assets)} assets not found: {', '.join(missing_assets)}")
+            print("[LLM] Attempting extraction with LLM fallback...")
+
+            llm_data = self.llm_fallback.extract_strategic_allocation(text)
+
+            # Merge LLM results
+            for asset_name in missing_assets:
+                # Find matching asset in LLM results (case-insensitive)
+                for llm_asset, llm_value in llm_data.items():
+                    if asset_name.lower() in llm_asset.lower() or llm_asset.lower() in asset_name.lower():
+                        asset_config = config.STRATEGIC_ALLOCATION_CONFIG[asset_name]
+                        self.csv_row[asset_config["column"]] = llm_value
+                        print(f"    [LLM] {asset_name} = {llm_value}% -> Col[{asset_config['column']}]")
+                        extracted_count += 1
+                        break
+
+            print(f"[LLM] Total after fallback: {extracted_count}/5 assets extracted")
 
         print("[OK] Strategic allocation extracted")
 

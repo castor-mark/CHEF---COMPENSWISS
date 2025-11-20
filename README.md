@@ -87,12 +87,25 @@ where YYYYMMDD is the date the file was created.
 - Multi-Asset portfolio
 - Market portfolio totals
 
-### Strategic Allocation (from text)
+### Strategic Allocation (from text using hybrid extraction)
 - Foreign currency bonds %
 - Equities %
 - Bonds in CHF %
 - Real estate %
 - Precious metals %
+
+**Extraction Strategy:** Multi-tier fallback approach
+- **Tier 1:** Specific regex patterns (highest accuracy)
+- **Tier 2:** Sentence-based extraction with 15-word proximity check
+- **Tier 3:** LLM-based extraction (GroqCloud, OpenRouter, Gemini)
+- Features: Supports decimal percentages, 0% values, adaptable to text changes
+- Validation: Tested by 4 AI models (avg confidence: 8/10)
+
+**LLM Fallback:** Automatic fallback to AI models when regex fails
+- GroqCloud API (llama-3.3-70b, mixtral-8x7b, gemma2-9b) - Free tier
+- OpenRouter API (qwen, deepseek, llama models) - Free models available
+- Gemini API (gemini-2.0-flash-exp) - Free tier
+- Configure in `.env` file - see [LLM Configuration](#llm-fallback-configuration)
 
 ## Configuration
 
@@ -102,12 +115,31 @@ All settings are in `config.py`:
 - Table category mappings
 - Selenium timeouts
 
-## Files
+## Project Structure
 
-- `scraper.py` - Main scraper (navigates site, extracts data, saves Excel)
-- `config.py` - Configuration and mappings
-- `requirements.txt` - Python dependencies
-- `README.md` - This file
+```
+CHEF – COMPENSWISS/
+├── scraper.py              # Main production scraper
+├── config.py               # Configuration and strategic allocation patterns
+├── requirements.txt        # Python dependencies
+├── README.md              # This file
+├── bin/                   # Test files and development tools
+│   ├── test_hybrid_strategy.py
+│   ├── test_edge_cases.py
+│   └── README.md
+├── reports/               # Generated data files
+│   ├── YYYYMMDD/         # Timestamped folders
+│   └── latest/           # Latest run
+└── Project-information/   # Project documentation
+    └── Zen-Models-Updated.csv
+```
+
+## Key Files
+
+- **scraper.py** - Main production scraper with hybrid extraction strategy
+- **config.py** - Configuration including STRATEGIC_ALLOCATION_CONFIG
+- **requirements.txt** - Python dependencies
+- **bin/** - Test files and development tools (see bin/README.md)
 
 ## Requirements
 
@@ -116,9 +148,65 @@ All settings are in `config.py`:
 - ChromeDriver
 - Internet connection (to access live site)
 
+## LLM Fallback Configuration
+
+The scraper includes automatic LLM fallback when standard extraction fails. Configure API keys in `.env`:
+
+```bash
+# GroqCloud API (Free tier available)
+GROQ_CLOUD_API_KEY=your_key_here
+
+# OpenRouter API (Free models available)
+OPENROUTER_API_KEY=your_key_here
+
+# Gemini API (Free tier available)
+GEMINI_API_KEY=your_key_here
+
+# Enable/disable LLM fallback
+ENABLE_LLM_FALLBACK=true
+
+# Primary model (recommended: qwen/qwen-2.5-coder-32b-instruct:free)
+LLM_MODEL=qwen/qwen-2.5-coder-32b-instruct:free
+
+# Provider priority (order in which providers are tried)
+# Options: groq, openrouter, gemini
+# Default: "groq,openrouter,gemini" (fastest to slowest)
+# Example: "openrouter,gemini,groq" (try OpenRouter first)
+LLM_PROVIDER_PRIORITY=groq,openrouter,gemini
+```
+
+**Free API Keys:**
+- GroqCloud: https://console.groq.com/keys
+- OpenRouter: https://openrouter.ai/keys
+- Gemini: https://aistudio.google.com/app/apikey
+
+**Provider Performance (Based on Test Results):**
+- **GroqCloud** (llama-3.3-70b-versatile): 100% accuracy, 2.5s (FASTEST)
+- **OpenRouter** (meta-llama/llama-3.3-70b-instruct:free): 100% accuracy, 14s
+- **Gemini** (gemini-2.0-flash-exp): May hit quota limits
+
+**Test LLM Fallback:**
+```bash
+python bin/test_llm_fallback.py
+```
+
+**Change Provider Priority:**
+
+To use OpenRouter first, edit `.env`:
+```bash
+LLM_PROVIDER_PRIORITY=openrouter,groq,gemini
+```
+
+To use only Gemini (skip others):
+```bash
+LLM_PROVIDER_PRIORITY=gemini
+```
+
 ## Notes
 
 - The scraper accesses the live website at `https://ar.compenswiss.ch`
 - Data is extracted directly from the loaded web pages
 - All column headers match the exact format from the sample data
 - Reports are saved in both timestamped and "latest" folders
+- LLM fallback activates automatically when regex extraction is incomplete
+- Multiple API providers ensure high reliability (GroqCloud → OpenRouter → Gemini)
