@@ -57,3 +57,4 @@ chromedriver.log
 .pytest_cache/
 .coverage
 htmlcov/
+bin/
