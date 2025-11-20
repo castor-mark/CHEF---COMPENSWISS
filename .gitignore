@@ -57,6 +57,3 @@ chromedriver.log
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Bin folder (archived scripts)
-bin/

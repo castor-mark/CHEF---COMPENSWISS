@@ -13,14 +13,37 @@ This scraper:
 
 ## Installation
 
-1. Install Python dependencies:
+### 1. Install Python Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Install Chrome WebDriver:
+### 2. Install Chrome WebDriver
 - Download ChromeDriver matching your Chrome version
 - Add to system PATH
+
+### 3. Configure API Keys (Optional - for LLM fallback)
+```bash
+# Copy the environment template
+cp .env.example .env
+
+# Edit .env and add at least one API key
+# Recommended: GroqCloud (fastest, most reliable)
+```
+
+Get free API keys:
+- **GroqCloud** (recommended): https://console.groq.com/keys
+- **OpenRouter**: https://openrouter.ai/keys
+- **Gemini**: https://aistudio.google.com/app/apikey
+
+### 4. Test Your Setup
+```bash
+# Test the scraper
+python scraper.py
+
+# Test LLM fallback (optional)
+python bin/test_llm_fallback.py
+```
 
 ## Configuration
 
@@ -120,12 +143,17 @@ All settings are in `config.py`:
 ```
 CHEF – COMPENSWISS/
 ├── scraper.py              # Main production scraper
+├── llm_fallback.py         # LLM fallback extraction module
 ├── config.py               # Configuration and strategic allocation patterns
 ├── requirements.txt        # Python dependencies
+├── .env.example            # Environment configuration template
+├── .env                    # Your API keys (create from .env.example)
 ├── README.md              # This file
 ├── bin/                   # Test files and development tools
 │   ├── test_hybrid_strategy.py
 │   ├── test_edge_cases.py
+│   ├── test_llm_fallback.py
+│   ├── test_all_providers.py
 │   └── README.md
 ├── reports/               # Generated data files
 │   ├── YYYYMMDD/         # Timestamped folders
@@ -150,28 +178,32 @@ CHEF – COMPENSWISS/
 
 ## LLM Fallback Configuration
 
-The scraper includes automatic LLM fallback when standard extraction fails. Configure API keys in `.env`:
+The scraper includes automatic LLM fallback when standard extraction fails.
 
+**Quick Setup:**
 ```bash
-# GroqCloud API (Free tier available)
-GROQ_CLOUD_API_KEY=your_key_here
+# 1. Copy the example environment file
+cp .env.example .env
 
-# OpenRouter API (Free models available)
-OPENROUTER_API_KEY=your_key_here
+# 2. Edit .env and add your API keys
+# (Get free keys from the links below)
+```
 
-# Gemini API (Free tier available)
-GEMINI_API_KEY=your_key_here
+**Configuration Options:**
+
+See [.env.example](.env.example) for full configuration with detailed comments.
+
+Key settings:
+```bash
+# API Keys (get at least one, GroqCloud recommended)
+GROQ_CLOUD_API_KEY=your_key_here        # Free: 30 RPM, 14.4K RPD
+OPENROUTER_API_KEY=your_key_here        # Free models available
+GEMINI_API_KEY=your_key_here            # Free: 15 RPM, 1.5K RPD
 
 # Enable/disable LLM fallback
 ENABLE_LLM_FALLBACK=true
 
-# Primary model (recommended: qwen/qwen-2.5-coder-32b-instruct:free)
-LLM_MODEL=qwen/qwen-2.5-coder-32b-instruct:free
-
-# Provider priority (order in which providers are tried)
-# Options: groq, openrouter, gemini
-# Default: "groq,openrouter,gemini" (fastest to slowest)
-# Example: "openrouter,gemini,groq" (try OpenRouter first)
+# Provider priority (which to try first)
 LLM_PROVIDER_PRIORITY=groq,openrouter,gemini
 ```
 
