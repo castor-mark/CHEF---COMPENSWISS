@@ -258,7 +258,7 @@ class CompensswissScraper:
         # Create DataFrame for DATA file
         df_data = pd.DataFrame([config.CSV_HEADERS, config.CSV_ROW2_HEADERS, self.csv_row])
 
-        # Create DataFrame for METADATA file (placeholder - needs to be customized)
+        # Create DataFrame for METADATA file
         df_meta = self.create_metadata()
 
         # Save to timestamp folder
@@ -267,9 +267,9 @@ class CompensswissScraper:
         zip_path_ts = os.path.join(timestamp_dir, zip_filename)
 
         df_data.to_excel(data_path_ts, index=False, header=False, engine='openpyxl')
-        df_meta.to_excel(meta_path_ts, index=False, header=False, engine='openpyxl')
+        df_meta.to_excel(meta_path_ts, index=False, header=True, engine='openpyxl')
         print("[OK] Created DATA file: {}".format(data_filename))
-        print("[OK] Created META file: {}".format(meta_filename))
+        print("[OK] Created META file: {} (32 rows)".format(meta_filename))
 
         # Create ZIP archive
         with zipfile.ZipFile(zip_path_ts, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -290,16 +290,57 @@ class CompensswissScraper:
         return zip_path_ts, zip_path_latest
 
     def create_metadata(self):
-        """Create METADATA file structure"""
-        # Placeholder metadata - should be customized based on actual requirements
-        metadata = {
-            'DATASET': config.DATASET_NAME,
-            'FREQUENCY': 'Annual',
-            'SOURCE': 'Compenswiss - Fonds de compensation AVS',
-            'NEXT_RELEASE_DATE': 'TBD'
-        }
+        """Create METADATA file structure matching the sample format"""
+        print("\n[7] Generating metadata...")
 
-        df = pd.DataFrame([metadata])
+        metadata_rows = []
+
+        # Generate metadata for each column (1-32, skipping column 0 which is the year)
+        for col_idx in range(1, 33):
+            code = config.CSV_HEADERS[col_idx]
+            description = config.CSV_ROW2_HEADERS[col_idx]
+
+            # Extract code mnemonic (everything before @, then remove .A.1 suffix if present)
+            code_mnemonic = code.split('@')[0] if '@' in code else code
+            # Remove .A.1 suffix
+            if code_mnemonic.endswith('.A.1'):
+                code_mnemonic = code_mnemonic[:-4]
+
+            # Determine if this is performance data (1-27) or strategic allocation (28-32)
+            if col_idx <= 27:
+                # Performance data
+                metadata_type = config.METADATA_PERFORMANCE.copy()
+            else:
+                # Strategic allocation data
+                metadata_type = config.METADATA_STRATEGIC.copy()
+
+            # Build complete metadata row
+            row = {
+                "CODE": code,
+                "CODE_MNEMONIC": code_mnemonic,
+                "DESCRIPTION": description,
+                "FREQUENCY": config.METADATA_COMMON["FREQUENCY"],
+                "MULTIPLIER": metadata_type["MULTIPLIER"],
+                "AGGREGATION_TYPE": config.METADATA_COMMON["AGGREGATION_TYPE"],
+                "UNIT_TYPE": metadata_type["UNIT_TYPE"],
+                "DATA_TYPE": metadata_type["DATA_TYPE"],
+                "DATA_UNIT": metadata_type["DATA_UNIT"],
+                "SEASONALLY_ADJUSTED": config.METADATA_COMMON["SEASONALLY_ADJUSTED"],
+                "ANNUALIZED": config.METADATA_COMMON["ANNUALIZED"],
+                "STATE": config.METADATA_COMMON["STATE"],
+                "PROVIDER_MEASURE_URL": metadata_type["PROVIDER_MEASURE_URL"],
+                "PROVIDER": config.METADATA_COMMON["PROVIDER"],
+                "SOURCE": config.METADATA_COMMON["SOURCE"],
+                "SOURCE_DESCRIPTION": config.METADATA_COMMON["SOURCE_DESCRIPTION"],
+                "COUNTRY": config.METADATA_COMMON["COUNTRY"],
+                "DATASET": config.METADATA_COMMON["DATASET"]
+            }
+
+            metadata_rows.append(row)
+
+        df = pd.DataFrame(metadata_rows)
+        print("[OK] Generated {} metadata rows".format(len(metadata_rows)))
+
         return df
 
     def display_summary(self):

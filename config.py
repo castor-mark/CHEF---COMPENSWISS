@@ -123,4 +123,36 @@ PERFORMANCE_TABLE_MAPPING = {
     "Basic portfolio - Treasury": 27,
 }
 
+# Metadata template - common fields for all rows
+METADATA_COMMON = {
+    "FREQUENCY": "A",
+    "AGGREGATION_TYPE": "UNDEFINED",
+    "SEASONALLY_ADJUSTED": "NSA",
+    "ANNUALIZED": False,
+    "STATE": "ACTIVE",
+    "PROVIDER": "AfricaAI",
+    "SOURCE": "COMPENSWISS",
+    "SOURCE_DESCRIPTION": "Compenswiss - Fonds de compensation AVS",
+    "COUNTRY": "CHE",
+    "DATASET": "CHEF"
+}
+
+# Metadata for performance data (columns 1-27)
+METADATA_PERFORMANCE = {
+    "MULTIPLIER": 6,
+    "UNIT_TYPE": "FLOW",
+    "DATA_TYPE": "CURRENCY",
+    "DATA_UNIT": "CHF",
+    "PROVIDER_MEASURE_URL": f"{BASE_URL}/en_GB/investments"
+}
+
+# Metadata for strategic allocation data (columns 28-32)
+METADATA_STRATEGIC = {
+    "MULTIPLIER": 0,
+    "UNIT_TYPE": "LEVEL",
+    "DATA_TYPE": "PERCENT",
+    "DATA_UNIT": "PERCENT",
+    "PROVIDER_MEASURE_URL": f"{BASE_URL}/en_GB/investments/strategic-asset-allocation-sva"
+}
+
 
